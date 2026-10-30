@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Получить отметки студента в курсах</title>
+<style>
+  :root {
+    --page: #e8edf4;
+    --sheet: #ffffff;
+    --navy: #1b2d52;
+    --navy-soft: #3d5282;
+    --ink: #1f2937;
+    --muted: #6b7690;
+    --line: #d5dcea;
+    --good: #1f7a5a;
+    --good-bg: #e3f4ec;
+    --none: #8892a8;
+    --none-bg: #eef0f5;
+    --bad: #b3362b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh;
+    background: var(--page); color: var(--ink);
+    font: 16px/1.5 "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  }
+  header {
+    background: var(--navy); color: #fff;
+    padding: 34px 20px 78px;
+  }
+  .wrap { max-width: 780px; margin: 0 auto; }
+  h1 { margin: 0; font: 600 28px/1.25 Georgia, "Times New Roman", serif; }
+  header p { margin: 6px 0 0; color: #b9c5e2; font-size: 15px; }
+
+  main { max-width: 780px; margin: -50px auto 0; padding: 0 20px 60px; }
+
+  .card {
+    background: var(--sheet); border: 1px solid var(--line);
+    border-radius: 12px; padding: 20px 22px;
+    box-shadow: 0 12px 28px -20px rgba(27,45,82,.55);
+  }
+  form { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
+  .full { grid-column: 1 / -1; }
+  label { display: block; font-size: 14px; font-weight: 600; color: var(--navy-soft); }
+  input {
+    width: 100%; margin-top: 5px; padding: 10px 12px;
+    border: 1.5px solid var(--line); border-radius: 8px;
+    font: inherit; color: var(--ink); background: #fbfcfe;
+  }
+  input:focus { outline: none; border-color: var(--navy-soft); box-shadow: 0 0 0 3px #d6def0; }
+  input[aria-invalid="true"] { border-color: var(--bad); background: #fff6f5; }
+  .hint { min-height: 18px; margin: 3px 0 0; font-size: 13px; font-weight: 400; color: var(--bad); }
+
+  .actions { display: flex; align-items: center; gap: 16px; }
+  button {
+    padding: 11px 26px; border: 0; border-radius: 8px;
+    background: var(--navy); color: #fff; font: 600 16px inherit; font-family: inherit;
+    cursor: pointer; transition: background .15s;
+  }
+  button:hover { background: var(--navy-soft); }
+  button:focus-visible { outline: 3px solid #9db0dc; outline-offset: 2px; }
+  button:disabled { opacity: .6; cursor: progress; }
+  #state { color: var(--muted); font-size: 15px; }
+  #state.err { color: var(--bad); }
+
+  .book { margin-top: 22px; padding: 0; overflow: hidden; }
+  .book h2 {
+    margin: 0; padding: 14px 22px; font: 600 18px Georgia, serif;
+    background: #f3f6fb; border-bottom: 1px solid var(--line); color: var(--navy);
+    display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+  }
+  .book h2 small { font: 400 14px "Segoe UI", sans-serif; color: var(--muted); }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding: 14px 22px; border-bottom: 1px solid var(--line);
+  }
+  li:last-child { border-bottom: 0; }
+  .name { font-weight: 500; }
+  .rank { display: block; font-size: 13px; color: var(--muted); font-weight: 400; }
+  .mark {
+    flex: none; min-width: 64px; padding: 6px 12px; text-align: center;
+    border-radius: 999px; font-weight: 700; font-size: 17px;
+    background: var(--good-bg); color: var(--good);
+  }
+  .mark.none { background: var(--none-bg); color: var(--none); font-weight: 500; font-size: 14px; }
+
+  @media (max-width: 560px) {
+    form { grid-template-columns: 1fr; }
+    h1 { font-size: 23px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>Получить отметки студента в курсах</h1>
+    <p>Войдите в Moodle — отметки по всем курсам появятся ниже.</p>
+  </div>
+</header>
+
+<main>
+  <section class="card">
+    <form id="login" novalidate>
+      <div class="full">
+        <label for="site">Адрес Moodle</label>
+        <input id="site" value="https://node-server.ru/m" inputmode="url">
+        <p class="hint" id="e-site"></p>
+      </div>
+      <div>
+        <label for="user">Логин</label>
+        <input id="user" autocomplete="username">
+        <p class="hint" id="e-user"></p>
+      </div>
+      <div>
+        <label for="pass">Пароль</label>
+        <input id="pass" type="password" autocomplete="current-password">
+        <p class="hint" id="e-pass"></p>
+      </div>
+      <div class="full actions">
+        <button id="go" type="submit">Поехали</button>
+        <span id="state" role="status"></span>
+      </div>
+    </form>
+  </section>
+
+  <div id="out"></div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let BASE = '';
+
+function flag(field, text) {
+  $(field).setAttribute('aria-invalid', text ? 'true' : 'false');
+  $('e-' + field).textContent = text;
+  return !text;
+}
+
+function checkForm() {
+  let okSite = true;
+  try { new URL($('site').value.trim()); } catch { okSite = false; }
+  const a = flag('site', okSite ? '' : 'Введите адрес целиком, с https://');
+  const b = flag('user', $('user').value.trim() ? '' : 'Введите логин');
+  const c = flag('pass', $('pass').value ? '' : 'Введите пароль');
+  return a && b && c;
+}
+
+function say(text, bad) {
+  $('state').textContent = text;
+  $('state').className = bad ? 'err' : '';
+}
+
+// токен по логину и паролю
+async function loadToken(login, pass) {
+  const r = await fetch(BASE + '/login/token.php?service=moodle_mobile_app', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ username: login, password: pass })
+  });
+  const j = await r.json();
+  if (!j.token) throw new Error(j.error || 'не удалось получить токен');
+  return j.token;
+}
+
+// вызов функции веб-сервиса
+async function ws(token, fn, extra = {}) {
+  const q = new URLSearchParams({ wstoken: token, wsfunction: fn, moodlewsrestformat: 'json', ...extra });
+  const j = await (await fetch(BASE + '/webservice/rest/server.php?' + q)).json();
+  if (j && j.exception) throw new Error(j.message || j.errorcode);
+  return j;
+}
+
+function hasMark(v) {
+  return v !== undefined && v !== null && String(v).trim() !== '' && String(v).trim() !== '-';
+}
+
+function draw(rows) {
+  const box = $('out');
+  box.textContent = '';
+
+  const book = document.createElement('section');
+  book.className = 'card book';
+
+  const withMark = rows.filter(r => hasMark(r.grade)).length;
+  const h = document.createElement('h2');
+  h.textContent = 'Отметки по курсам';
+  const small = document.createElement('small');
+  small.textContent = 'с отметкой: ' + withMark + ' из ' + rows.length;
+  h.append(small);
+  book.append(h);
+
+  const list = document.createElement('ul');
+  rows.forEach(r => {
+    const li = document.createElement('li');
+
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = r.title;
+    if (r.rank) {
+      const rk = document.createElement('span');
+      rk.className = 'rank';
+      rk.textContent = 'место в рейтинге: ' + r.rank;
+      name.append(rk);
+    }
+
+    const mark = document.createElement('span');
+    const ok = hasMark(r.grade);
+    mark.className = 'mark' + (ok ? '' : ' none');
+    mark.textContent = ok ? r.grade : 'нет отметки';
+
+    li.append(name, mark);
+    list.append(li);
+  });
+  if (!rows.length) {
+    const li = document.createElement('li');
+    li.textContent = 'Вы пока не записаны ни на один курс.';
+    list.append(li);
+  }
+  book.append(list);
+  box.append(book);
+}
+
+$('login').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  $('out').textContent = '';
+  if (!checkForm()) { say('Заполните выделенные поля', true); return; }
+
+  BASE = $('site').value.trim().replace(/\/+$/, '');
+  $('go').disabled = true;
+  try {
+    say('Вхожу…');
+    let token;
+    try {
+      token = await loadToken($('user').value.trim(), $('pass').value);
+    } catch (e) {
+      flag('pass', 'Проверьте логин и пароль');
+      throw e;
+    }
+
+    say('Загружаю отметки…');
+    const me = await ws(token, 'core_webservice_get_site_info');
+    const [overview, courses] = await Promise.all([
+      ws(token, 'gradereport_overview_get_course_grades'),
+      ws(token, 'core_enrol_get_users_courses', { userid: me.userid })
+    ]);
+
+    // id курса -> название
+    const titles = new Map(courses.map(c => [c.id, c.fullname]));
+    const rows = (overview.grades || [])
+      .map(g => ({
+        title: titles.get(g.courseid) || ('Курс № ' + g.courseid),
+        grade: g.grade,
+        rank: g.rank
+      }))
+      .sort((a, b) => a.title.localeCompare(b.title, 'ru'));
+
+    draw(rows);
+    say('Готово');
+  } catch (err) {
+    say('Ошибка: ' + err.message, true);
+  } finally {
+    $('go').disabled = false;
+  }
+});
+</script>
+</body>
+</html>
